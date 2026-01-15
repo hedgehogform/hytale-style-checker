@@ -1,0 +1,12 @@
+{
+  "input_size": 64,
+  "class_names": [
+    "hytale",
+    "wrong"
+  ],
+  "class_mapping": {
+    "0": "hytale",
+    "1": "wrong"
+  },
+  "threshold": 0.5
+}
