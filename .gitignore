@@ -13,6 +13,9 @@ wheels/
 model/
 onnx_model/
 
+# But keep docs for GitHub Pages
+!docs/
+
 # Dataset (too large for git)
 dataset/
 

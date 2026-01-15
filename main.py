@@ -695,8 +695,9 @@ def export_to_onnx_cpu(model, class_names):
 
 
 def deploy_github_pages():
-    """Deploy the model and web page to GitHub Pages."""
+    """Deploy the model and web page to GitHub Pages using gh CLI."""
     import shutil
+    import subprocess
 
     PAGES_DIR = Path("docs")
 
@@ -704,12 +705,24 @@ def deploy_github_pages():
     print("Deploying to GitHub Pages")
     print("=" * 50)
 
+    # Check if gh CLI is available
+    try:
+        subprocess.run(["gh", "--version"], capture_output=True, check=True)
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        print("Error: GitHub CLI (gh) not found. Install it from https://cli.github.com/")
+        return
+
     # Check if model exists
     if not (ONNX_OUTPUT_DIR / "model.onnx").exists():
         print("Error: ONNX model not found. Run 'python main.py export' first.")
         return
 
+    if not Path("web_example.html").exists():
+        print("Error: web_example.html not found. Run 'python main.py export' first.")
+        return
+
     # Create docs directory (GitHub Pages serves from /docs)
+    print("\nPreparing files...")
     if PAGES_DIR.exists():
         shutil.rmtree(PAGES_DIR)
     PAGES_DIR.mkdir()
@@ -719,28 +732,62 @@ def deploy_github_pages():
     onnx_dest.mkdir()
     shutil.copy(ONNX_OUTPUT_DIR / "model.onnx", onnx_dest / "model.onnx")
     shutil.copy(ONNX_OUTPUT_DIR / "metadata.json", onnx_dest / "metadata.json")
-    print(f"Copied model files to {onnx_dest}")
+    print(f"  Copied model files to {onnx_dest}")
 
     # Copy and rename HTML to index.html
-    if Path("web_example.html").exists():
-        shutil.copy("web_example.html", PAGES_DIR / "index.html")
-        print(f"Copied web_example.html to {PAGES_DIR / 'index.html'}")
-    else:
-        print("Error: web_example.html not found. Run 'python main.py export' first.")
-        return
+    shutil.copy("web_example.html", PAGES_DIR / "index.html")
+    print(f"  Copied web_example.html to {PAGES_DIR / 'index.html'}")
 
     # Create .nojekyll file to prevent Jekyll processing
     (PAGES_DIR / ".nojekyll").touch()
 
-    print(f"\nGitHub Pages files created in '{PAGES_DIR}/' directory!")
-    print("\nNext steps:")
-    print("  1. Commit and push the 'docs' folder to your repository")
-    print("  2. Go to your repo Settings > Pages")
-    print("  3. Set Source to 'Deploy from a branch'")
-    print("  4. Select 'master' (or main) branch and '/docs' folder")
-    print("  5. Save and wait for deployment")
+    # Git operations
+    print("\nCommitting changes...")
+    subprocess.run(["git", "add", "docs/"], check=True)
+    subprocess.run(["git", "commit", "-m", "Deploy to GitHub Pages"], check=False)  # May fail if no changes
+
+    # Get current branch
+    result = subprocess.run(["git", "branch", "--show-current"], capture_output=True, text=True)
+    branch = result.stdout.strip() or "master"
+
+    # Push to remote
+    print(f"\nPushing to remote ({branch})...")
+    subprocess.run(["git", "push", "origin", branch], check=True)
+
+    # Get repo info
+    result = subprocess.run(["gh", "repo", "view", "--json", "name,owner"], capture_output=True, text=True)
+    if result.returncode == 0:
+        import json as json_module
+        repo_info = json_module.loads(result.stdout)
+        repo_name = repo_info["name"]
+        owner = repo_info["owner"]["login"]
+    else:
+        print("Warning: Could not get repo info")
+        repo_name = "<repo>"
+        owner = "<username>"
+
+    # Enable GitHub Pages via gh CLI
+    print("\nEnabling GitHub Pages...")
+    result = subprocess.run(
+        ["gh", "api", "-X", "POST", f"/repos/{owner}/{repo_name}/pages",
+         "-f", f"source[branch]={branch}", "-f", "source[path]=/docs"],
+        capture_output=True, text=True
+    )
+
+    if result.returncode != 0:
+        # Pages might already be enabled, try updating instead
+        subprocess.run(
+            ["gh", "api", "-X", "PUT", f"/repos/{owner}/{repo_name}/pages",
+             "-f", f"source[branch]={branch}", "-f", "source[path]=/docs"],
+            capture_output=True, text=True
+        )
+
+    print("\n" + "=" * 50)
+    print("Deployment complete!")
+    print("=" * 50)
     print("\nYour site will be available at:")
-    print("  https://<username>.github.io/<repo-name>/")
+    print(f"  https://{owner}.github.io/{repo_name}/")
+    print("\nNote: It may take a few minutes for the site to be live.")
 
 
 if __name__ == "__main__":
