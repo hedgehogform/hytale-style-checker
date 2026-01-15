@@ -7,9 +7,10 @@ Exports the model to ONNX format for web deployment.
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from torch.utils.data import DataLoader, random_split, Subset
-from torchvision import datasets, transforms
+from torch.utils.data import Dataset, DataLoader, random_split, Subset
+from torchvision import transforms
 from pathlib import Path
+from PIL import Image
 import json
 
 # Configuration
@@ -21,6 +22,10 @@ BATCH_SIZE = 128  # Larger batch = better GPU utilization
 EPOCHS = 50
 VALIDATION_SPLIT = 0.2
 LEARNING_RATE = 0.001
+
+# Explicitly define the correct style folder
+# All other folders in the dataset will be treated as "wrong" style
+CORRECT_STYLE_FOLDER = "hytale"
 
 
 def get_device():
@@ -112,6 +117,63 @@ class HytaleStyleCNN(nn.Module):
         return x
 
 
+class BinaryStyleDataset(Dataset):
+    """Dataset that treats one folder as 'correct' (label 0) and all others as 'wrong' (label 1)."""
+
+    def __init__(self, root_dir, correct_folder, transform=None):
+        self.transform = transform
+        self.samples = []  # List of (path, label)
+        self.bad_files = []  # Track files that couldn't be loaded
+
+        root = Path(root_dir)
+        folders = [f for f in root.iterdir() if f.is_dir()]
+
+        for folder in folders:
+            # Label 0 = correct style (hytale), Label 1 = wrong style (everything else)
+            label = 0 if folder.name == correct_folder else 1
+
+            # Find all images in this folder recursively
+            for ext in ['*.png', '*.jpg', '*.jpeg', '*.gif', '*.bmp', '*.webp']:
+                for img_path in folder.rglob(ext):
+                    if self._is_valid_image(img_path):
+                        self.samples.append((img_path, label))
+                for img_path in folder.rglob(ext.upper()):
+                    if self._is_valid_image(img_path):
+                        self.samples.append((img_path, label))
+
+        # Count samples per class
+        self.correct_count = sum(1 for _, l in self.samples if l == 0)
+        self.wrong_count = sum(1 for _, l in self.samples if l == 1)
+
+        # Report bad files
+        if self.bad_files:
+            print(f"Warning: Skipped {len(self.bad_files)} invalid/corrupted images:")
+            for f in self.bad_files[:5]:  # Show first 5
+                print(f"  - {f}")
+            if len(self.bad_files) > 5:
+                print(f"  ... and {len(self.bad_files) - 5} more")
+
+    def _is_valid_image(self, img_path):
+        """Check if file is a valid image that can be opened."""
+        try:
+            with Image.open(img_path) as img:
+                img.verify()
+            return True
+        except Exception:
+            self.bad_files.append(img_path)
+            return False
+
+    def __len__(self):
+        return len(self.samples)
+
+    def __getitem__(self, idx):
+        img_path, label = self.samples[idx]
+        img = Image.open(img_path).convert('RGB')
+        if self.transform:
+            img = self.transform(img)
+        return img, label
+
+
 def create_datasets():
     """Load and prepare training and validation datasets."""
 
@@ -131,11 +193,16 @@ def create_datasets():
         transforms.ToTensor(),
     ])
 
-    # Load full dataset to get class names and split
-    full_dataset = datasets.ImageFolder(str(DATASET_DIR), transform=train_transform)
-    class_names = full_dataset.classes
-    print(f"Classes: {class_names}")
-    print(f"Class mapping: 0 = {class_names[0]}, 1 = {class_names[1]}")
+    # Load full dataset with explicit label mapping
+    full_dataset = BinaryStyleDataset(DATASET_DIR, CORRECT_STYLE_FOLDER, transform=train_transform)
+
+    # List all folders for display
+    folders = [f.name for f in DATASET_DIR.iterdir() if f.is_dir()]
+    print(f"Folders found: {folders}")
+    print(f"Correct style folder: '{CORRECT_STYLE_FOLDER}' -> Label 0")
+    print(f"Wrong style folders: {[f for f in folders if f != CORRECT_STYLE_FOLDER]} -> Label 1")
+    print(f"Correct style images: {full_dataset.correct_count}")
+    print(f"Wrong style images: {full_dataset.wrong_count}")
     print(f"Total images: {len(full_dataset)}")
 
     # Split into train and validation
@@ -148,9 +215,8 @@ def create_datasets():
         generator=torch.Generator().manual_seed(42)
     )
 
-    # Apply validation transform to val_dataset
-    # We need to create a new dataset with val_transform for validation
-    val_dataset_proper = datasets.ImageFolder(str(DATASET_DIR), transform=val_transform)
+    # Create validation dataset with proper transform
+    val_dataset_proper = BinaryStyleDataset(DATASET_DIR, CORRECT_STYLE_FOLDER, transform=val_transform)
     val_indices = val_dataset.indices
     val_dataset = Subset(val_dataset_proper, val_indices)
 
@@ -175,6 +241,9 @@ def create_datasets():
         num_workers=0,
         pin_memory=False,
     )
+
+    # Class names: 0 = correct (hytale), 1 = wrong
+    class_names = [CORRECT_STYLE_FOLDER, "wrong"]
 
     return train_loader, val_loader, class_names
 
@@ -395,9 +464,6 @@ def main():
     torch.save(model.state_dict(), MODEL_OUTPUT_DIR / "final_model.pth")
     print(f"Saved PyTorch model to {MODEL_OUTPUT_DIR / 'final_model.pth'}")
 
-    # Create web example
-    create_web_example()
-
     print("\n" + "=" * 50)
     print("Training complete!")
     print("=" * 50)
@@ -424,13 +490,12 @@ def export_only():
     model.load_state_dict(torch.load(MODEL_OUTPUT_DIR / "best_model.pth", weights_only=True))
     model.to("cpu")
 
-    # Get class names from dataset folder
-    class_names = sorted([d.name for d in DATASET_DIR.iterdir() if d.is_dir()])
-    print(f"Classes: {class_names}")
+    # Class names: 0 = correct (hytale), 1 = wrong
+    class_names = [CORRECT_STYLE_FOLDER, "wrong"]
+    print(f"Class mapping: 0 = '{CORRECT_STYLE_FOLDER}' (correct), 1 = 'wrong'")
 
     # Export
     export_to_onnx_cpu(model, class_names)
-    create_web_example()
 
     print("\nExport complete!")
     print(f"Files created:")

@@ -16,8 +16,5 @@ wheels/
 # Dataset (too large for git)
 dataset/
 
-# Generated files
-web_example.html
-
 # uv
 uv.lock
