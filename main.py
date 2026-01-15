@@ -178,18 +178,19 @@ def create_datasets():
     """Load and prepare training and validation datasets."""
 
     # Training transforms with augmentation
+    # Use BILINEAR for general images - works for both textures and screenshots
     train_transform = transforms.Compose([
-        transforms.Resize((IMG_SIZE, IMG_SIZE), interpolation=transforms.InterpolationMode.NEAREST),
+        transforms.Resize((IMG_SIZE, IMG_SIZE), interpolation=transforms.InterpolationMode.BILINEAR),
         transforms.RandomHorizontalFlip(),
         transforms.RandomVerticalFlip(),
         transforms.RandomRotation(90),
-        transforms.ColorJitter(brightness=0.1, contrast=0.1),
+        transforms.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.1),
         transforms.ToTensor(),  # Converts to [0, 1] and CHW format
     ])
 
     # Validation transforms (no augmentation)
     val_transform = transforms.Compose([
-        transforms.Resize((IMG_SIZE, IMG_SIZE), interpolation=transforms.InterpolationMode.NEAREST),
+        transforms.Resize((IMG_SIZE, IMG_SIZE), interpolation=transforms.InterpolationMode.BILINEAR),
         transforms.ToTensor(),
     ])
 
@@ -433,7 +434,15 @@ def main():
 
     # Create model
     print("\nCreating model...")
-    model = HytaleStyleCNN().to(DEVICE)
+    model = HytaleStyleCNN()
+
+    # Load existing model if available (continue training)
+    existing_model_path = MODEL_OUTPUT_DIR / "best_model.pth"
+    if existing_model_path.exists():
+        print(f"Loading existing model from {existing_model_path} (continuing training)...")
+        model.load_state_dict(torch.load(existing_model_path, weights_only=True))
+
+    model = model.to(DEVICE)
 
     # Print model summary
     total_params = sum(p.numel() for p in model.parameters())

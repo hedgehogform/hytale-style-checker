@@ -369,8 +369,9 @@
             canvas.height = IMG_SIZE;
             const ctx = canvas.getContext('2d');
 
-            // Disable image smoothing for pixel art
-            ctx.imageSmoothingEnabled = false;
+            // Enable image smoothing (bilinear) to match training
+            ctx.imageSmoothingEnabled = true;
+            ctx.imageSmoothingQuality = 'high';
             ctx.drawImage(img, 0, 0, IMG_SIZE, IMG_SIZE);
 
             // Get image data
