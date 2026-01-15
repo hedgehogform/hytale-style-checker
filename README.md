@@ -18,7 +18,8 @@ A machine learning model that detects if a texture matches Hytale's art style. T
 - **Training Data**: ~4,200 Hytale textures, ~3,500 non-Hytale (Minecraft) textures
 - **Input Size**: 64x64 pixels (nearest-neighbor interpolation for pixel art)
 
-> **Note:** Take results with a grain of salt - the model can produce false positives. It was only trained on Hytale and Minecraft textures, so it may not generalize well to other art styles.
+> [!NOTE]
+> Take results with a grain of salt - the model can produce false positives. It was only trained on Hytale and Minecraft textures, so it may not generalize well to other art styles.
 
 ## Contributing Training Data
 
