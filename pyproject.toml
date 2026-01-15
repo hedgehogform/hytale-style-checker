@@ -1,0 +1,13 @@
+[project]
+name = "hytale-style-detector"
+version = "0.1.0"
+description = "ML model to detect Hytale-styled textures"
+readme = "README.md"
+requires-python = ">=3.10,<3.13"
+dependencies = [
+    "torch>=2.0.0",
+    "torchvision>=0.15.0",
+    "torch-directml>=0.2.0",
+    "pillow>=10.0.0",
+    "onnx>=1.20.1",
+]
