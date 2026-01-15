@@ -9,12 +9,9 @@ wheels/
 # Virtual environments
 .venv
 
-# Model outputs
-model/
-onnx_model/
-
-# But keep docs for GitHub Pages
-!docs/
+# Model outputs (only in root, not in docs/)
+/model/
+/onnx_model/
 
 # Dataset (too large for git)
 dataset/
